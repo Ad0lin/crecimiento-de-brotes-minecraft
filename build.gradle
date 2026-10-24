@@ -11,7 +11,11 @@ base {
 }
 
 repositories {
-    // Repositorios necesarios
+    mavenCentral()
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
 }
 
 dependencies {
