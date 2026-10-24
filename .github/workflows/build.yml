@@ -14,14 +14,11 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Validate Gradle Wrapper
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Initialize Gradle Wrapper
+      - name: Make Gradle Wrapper
         run: gradle wrapper --gradle-version 8.8
 
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew build --no-daemon
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
