@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "unrestricted_trees",
+  "name": "Unrestricted Trees",
+  "version": "${version}",
+  "environment": "*",
+  "entrypoints": {},
+  "mixins": [
+    "unrestricted_trees.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "1.21.11"
+  }
+}
