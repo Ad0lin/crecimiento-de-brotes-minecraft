@@ -21,6 +21,9 @@ jobs:
           cache-read-only: true
           cache-disabled: true
 
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Build with Gradle
         run: ./gradlew build --no-daemon
 
