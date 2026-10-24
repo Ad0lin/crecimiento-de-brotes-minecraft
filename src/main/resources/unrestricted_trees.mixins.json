@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "TreeGrowthMixin",
-    "SaplingGeneratorMixin"
+    "SaplingGeneratorMixin",
+    "TreeFeatureMixin"
   ],
   "injectors": {
     "defaultRequire": 1
