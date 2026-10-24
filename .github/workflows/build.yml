@@ -14,8 +14,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Make Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.8
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.8'
 
       - name: Build with Gradle
         run: ./gradlew build --no-daemon
