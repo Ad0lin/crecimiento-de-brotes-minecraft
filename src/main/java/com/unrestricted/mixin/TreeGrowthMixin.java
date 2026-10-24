@@ -18,7 +18,8 @@ public class TreeGrowthMixin {
     @Inject(
         method = "canPlaceAt(Lnet/minecraft/block/BlockState;Lnet/minecraft/world/WorldView;Lnet/minecraft/block/BlockPos;)Z",
         at = @At("HEAD"),
-        cancellable = true
+        cancellable = true,
+        require = 0
     )
     private void bypassSpatialRestrictions(BlockState state, WorldView world, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         cir.setReturnValue(true);
