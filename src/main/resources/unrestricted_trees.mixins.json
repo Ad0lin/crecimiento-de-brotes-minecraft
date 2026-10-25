@@ -5,7 +5,8 @@
   "mixins": [
     "TreeGrowthMixin",
     "SaplingGeneratorMixin",
-    "TreeFeatureMixin"
+    "TreeFeatureMixin",
+    "LeafDropMixin"
   ],
   "injectors": {
     "defaultRequire": 1
