@@ -32,7 +32,7 @@ public class TreeFeatureMixin {
             return;
         }
 
-        // 2. Proteger toda la Redstone, Dispensadores, Observadores y Automatización
+        // 2. Proteger la Redstone, Dispensadores y Automatización
         boolean isMachine = world.testBlockState(pos, state -> 
             state.isOf(Blocks.DISPENSER) || state.isOf(Blocks.DROPPER) || 
             state.isOf(Blocks.OBSERVER) || state.isOf(Blocks.HOPPER) ||
@@ -46,7 +46,7 @@ public class TreeFeatureMixin {
             return;
         }
 
-        // 3. Permitir el crecimiento libre atravesando paredes, techos y obstáculos para tu árbol-casa
+        // 3. Permitir el crecimiento libre atravesando techos y paredes para tu árbol-casa
         cir.setReturnValue(true);
     }
 }
