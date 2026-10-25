@@ -2,8 +2,10 @@ package com.unrestricted.mixin;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.LeavesBlock;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.world.ServerWorld;
@@ -12,7 +14,7 @@ import net.minecraft.util.math.Box;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.List;
 
@@ -20,24 +22,24 @@ import java.util.List;
 public class LeafDropMixin {
 
     @Inject(
-        method = "onStacksDropped",
+        method = "getDroppedStacks",
         at = @At("HEAD"),
         cancellable = true,
         require = 0
     )
-    private void forceSilkTouchOrDecayLeaves(BlockState state, ServerWorld world, BlockPos pos, ItemStack tool, boolean dropExperience, CallbackInfo ci) {
+    private void forceSilkTouchDrops(BlockState state, ServerWorld world, BlockPos pos, BlockEntity blockEntity, Entity entity, ItemStack stack, CallbackInfoReturnable<List<ItemStack>> cir) {
         boolean hasSilkTouch = false;
 
-        // 1. Si minas directamente con una herramienta que tiene Toque de Seda
-        if (tool != null && !tool.isEmpty()) {
-            hasSilkTouch = hasSilkTouch(world, tool);
+        // 1. Si se usa una herramienta directamente con Toque de Seda
+        if (stack != null && !stack.isEmpty()) {
+            hasSilkTouch = hasSilkTouch(world, stack);
         }
 
-        // 2. Si es decaimiento natural (o ruptura sin herramienta), buscamos si hay un jugador cerca con Toque de Seda
-        if (!hasSilkTouch) {
-            Box box = new Box(pos).expand(6.0); // Rango de 6 bloques alrededor de la hoja que cae
-            List<PlayerEntity> nearbyPlayers = world.getEntitiesByClass(PlayerEntity.class, box, player -> 
-                hasSilkTouch(world, player.getMainHandStack())
+        // 2. Si es decaimiento natural (sin herramienta o entidad minando), buscamos si hay un jugador cerca con Toque de Seda
+        if (!hasSilkTouch && world instanceof ServerWorld serverWorld) {
+            Box box = new Box(pos).expand(6.0); // Rango de 6 bloques alrededor de las hojas que decaen
+            List<PlayerEntity> nearbyPlayers = serverWorld.getEntitiesByClass(PlayerEntity.class, box, player -> 
+                hasSilkTouch(serverWorld, player.getMainHandStack())
             );
 
             if (!nearbyPlayers.isEmpty()) {
@@ -45,20 +47,20 @@ public class LeafDropMixin {
             }
         }
 
-        // Si se cumple cualquiera de las dos, soltamos el bloque de hojas y cancelamos el botín de brotes/manzanas
+        // Si se detecta Toque de Seda (por uso directo o por proximidad durante el decaimiento), devolvemos el bloque de hojas
         if (hasSilkTouch) {
-            LeavesBlock.dropStack(world, pos, new ItemStack(((LeavesBlock)(Object)this).asItem()));
-            ci.cancel();
+            ItemStack leafStack = new ItemStack(((LeavesBlock)(Object)this).asItem());
+            cir.setReturnValue(List.of(leafStack));
         }
     }
 
-    private boolean hasSilkTouch(ServerWorld world, ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
+    private boolean hasSilkTouch(ServerWorld world, ItemStack itemStack) {
+        if (itemStack == null || itemStack.isEmpty()) return false;
         try {
             return world.getRegistryManager()
                 .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
                 .getOptional(Enchantments.SILK_TOUCH)
-                .map(entry -> EnchantmentHelper.getLevel(entry, stack) > 0)
+                .map(entry -> EnchantmentHelper.getLevel(entry, itemStack) > 0)
                 .orElse(false);
         } catch (Exception e) {
             return false;
