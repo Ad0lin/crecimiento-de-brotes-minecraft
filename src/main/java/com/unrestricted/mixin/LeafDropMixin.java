@@ -1,20 +1,16 @@
 package com.unrestricted.mixin;
 
-import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.LeavesBlock;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.loot.context.LootContextParameterSet;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.List;
 
@@ -22,49 +18,33 @@ import java.util.List;
 public class LeafDropMixin {
 
     @Inject(
-        method = "onBreak",
+        method = "getDroppedStacks",
         at = @At("HEAD"),
+        cancellable = true,
         require = 0
     )
-    private void interceptLeafBreak(World world, BlockPos pos, BlockState state, PlayerEntity player, CallbackInfo ci) {
-        if (world instanceof ServerWorld serverWorld) {
-            boolean hasSilkTouch = false;
+    private void forceSilkTouchLeafDrops(BlockState state, LootContextParameterSet.Builder builder, CallbackInfoReturnable<List<ItemStack>> cir) {
+        // Obtenemos la herramienta que se está utilizando en el contexto
+        ItemStack tool = builder.get(net.minecraft.loot.context.LootContextParameters.TOOL);
 
-            // 1. Si el juego nos pasa un jugador directamente en el evento
-            if (player != null) {
-                ItemStack mainHand = player.getMainHandStack();
-                hasSilkTouch = hasSilkTouch(serverWorld, mainHand);
-            }
+        if (tool != null && !tool.isEmpty()) {
+            try {
+                // Verificamos si la herramienta tiene Toque de Seda
+                ServerWorld world = builder.getWorld();
+                boolean hasSilkTouch = world.getRegistryManager()
+                    .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
+                    .getOptional(Enchantments.SILK_TOUCH)
+                    .map(entry -> EnchantmentHelper.getLevel(entry, tool) > 0)
+                    .orElse(false);
 
-            // 2. Si Tree Harvester borra las hojas sin pasar el jugador, buscamos uno cerca (en un radio de 5 bloques)
-            if (!hasSilkTouch) {
-                Box box = new Box(pos).expand(5.0);
-                List<PlayerEntity> nearbyPlayers = serverWorld.getEntitiesByClass(PlayerEntity.class, box, p -> 
-                    hasSilkTouch(serverWorld, p.getMainHandStack())
-                );
-
-                if (!nearbyPlayers.isEmpty()) {
-                    hasSilkTouch = true;
+                if (hasSilkTouch) {
+                    // Si tiene Toque de Seda, anulamos el botín normal y devolvemos únicamente el bloque de hojas
+                    ItemStack leafBlockStack = new ItemStack(((LeavesBlock)(Object)this).asItem());
+                    cir.setReturnValue(List.of(leafBlockStack));
                 }
+            } catch (Exception e) {
+                // Seguridad ante cualquier fallo de contexto
             }
-
-            // Si se detectó Toque de Seda por cualquier vía, forzamos la caída del bloque físico de hojas
-            if (hasSilkTouch) {
-                Block.dropStack(serverWorld, pos, new ItemStack(((LeavesBlock)(Object)this).asItem()));
-            }
-        }
-    }
-
-    private boolean hasSilkTouch(ServerWorld world, ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
-        try {
-            return world.getRegistryManager()
-                .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
-                .getOptional(Enchantments.SILK_TOUCH)
-                .map(entry -> EnchantmentHelper.getLevel(entry, stack) > 0)
-                .orElse(false);
-        } catch (Exception e) {
-            return false;
         }
     }
 }
