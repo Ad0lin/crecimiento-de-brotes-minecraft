@@ -5,7 +5,6 @@ import net.minecraft.block.LeavesBlock;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,24 +18,22 @@ public class LeafDropMixin {
     @Inject(
         method = "onStacksDropped",
         at = @At("HEAD"),
-        cancellable = true,
-        require = 0
+        cancellable = true
     )
     private void forceSilkTouchLeaves(BlockState state, ServerWorld world, BlockPos pos, ItemStack tool, boolean dropExperience, CallbackInfo ci) {
-        try {
-            // Verificamos si la herramienta utilizada tiene el encantamiento de Toque de Seda (Silk Touch)
-            if (tool != null && !tool.isEmpty()) {
-                var enchantmentRegistry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
-                var silkTouchEntry = enchantmentRegistry.getEntry(Enchantments.SILK_TOUCH).orElse(null);
-                
-                if (silkTouchEntry != null && EnchantmentHelper.getLevel(silkTouchEntry, tool) > 0) {
-                    // Si tiene Toque de Seda, soltamos directamente el bloque físico de hojas y cancelamos el evento estándar
-                    LeavesBlock.dropStack(world, pos, new ItemStack(state.getBlock().asItem()));
-                    ci.cancel();
-                }
+        // Verificamos de forma segura si la herramienta tiene el encantamiento de Toque de Seda
+        if (tool != null && !tool.isEmpty()) {
+            boolean hasSilkTouch = world.getRegistryManager()
+                .getOptionalWrapper(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
+                .flatMap(registry -> registry.getOptional(Enchantments.SILK_TOUCH))
+                .map(enchantment -> EnchantmentHelper.getLevel(enchantment, tool) > 0)
+                .orElse(false);
+
+            if (hasSilkTouch) {
+                // Soltamos el bloque físico de hojas y cancelamos los drops predeterminados
+                LeavesBlock.dropStack(world, pos, new ItemStack(state.getBlock().asItem()));
+                ci.cancel();
             }
-        } catch (Exception e) {
-            // Protección por si ocurre cualquier imprevisto en tiempo de ejecución
         }
     }
 }
