@@ -1,7 +1,6 @@
 
 package com.unrestricted.mixin;
 
-import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.TestableWorld;
 import net.minecraft.world.gen.feature.TreeFeature;
@@ -40,7 +39,7 @@ public abstract class TreeSpaceDiagnosticMixin {
 
         String key = origin.toShortString();
 
-        // Evitar repetir el informe por cada polvo de hueso
+        // Evitar repetir el informe en la misma posicion
         if (!INSPECTED.add(key)) {
             return;
         }
@@ -52,26 +51,33 @@ public abstract class TreeSpaceDiagnosticMixin {
             + " | Resultado Vanilla: " + result
         );
 
-        // Examinar el area alrededor de los cuatro brotes.
-        // No se modifica ningun bloque.
+        // Inspeccionar bloques sin modificar el mundo
         for (int y = 0; y <= 3; y++) {
             for (int x = -2; x <= 3; x++) {
                 for (int z = -2; z <= 3; z++) {
 
-                    BlockPos target = origin.add(x, y, z);
+                    // Copias inmutables para la expresion lambda
+                    final int dx = x;
+                    final int dy = y;
+                    final int dz = z;
+
+                    final BlockPos target =
+                            origin.add(dx, dy, dz);
 
                     world.testBlockState(target, state -> {
+
                         if (!state.isAir()) {
                             System.out.println(
                                 "[Unrestricted Trees] BLOQUE"
                                 + " | Relativo: "
-                                + x + "," + y + "," + z
+                                + dx + "," + dy + "," + dz
                                 + " | Posicion: "
                                 + target.toShortString()
                                 + " | Tipo: "
                                 + state.getBlock().getTranslationKey()
                             );
                         }
+
                         return true;
                     });
                 }
