@@ -18,8 +18,6 @@ public class TreeFeatureMixin {
         require = 0
     )
     private static void forceReplaceBlocks(TestableWorld world, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
-        // Le indicamos al generador del árbol que cualquier bloque circundante
-        // es válido para ser reemplazado/ignorado durante la prueba de espacio
         cir.setReturnValue(true);
     }
 }
