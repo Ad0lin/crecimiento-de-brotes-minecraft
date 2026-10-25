@@ -3,7 +3,8 @@
   "package": "com.unrestricted.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "TreeFeatureMixin"
+    "TreeFeatureMixin",
+    "TreeGrowthMixin"
   ],
   "client": [],
   "server": []
