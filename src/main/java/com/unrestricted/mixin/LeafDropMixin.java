@@ -21,16 +21,14 @@ public class LeafDropMixin {
         cancellable = true
     )
     private void forceSilkTouchLeaves(BlockState state, ServerWorld world, BlockPos pos, ItemStack tool, boolean dropExperience, CallbackInfo ci) {
-        // Verificamos de forma directa si la herramienta tiene el encantamiento de Toque de Seda
         if (tool != null && !tool.isEmpty()) {
-            boolean hasSilkTouch = EnchantmentHelper.getLevel(
-                world.getRegistryManager().getWrapperOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
-                    .getOrThrow(Enchantments.SILK_TOUCH), 
-                tool
-            ) > 0;
+            boolean hasSilkTouch = world.getRegistryManager()
+                .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
+                .getOptional(Enchantments.SILK_TOUCH)
+                .map(entry -> EnchantmentHelper.getLevel(entry, tool) > 0)
+                .orElse(false);
 
             if (hasSilkTouch) {
-                // Soltamos el bloque físico de hojas y cancelamos los drops predeterminados
                 LeavesBlock.dropStack(world, pos, new ItemStack(state.getBlock().asItem()));
                 ci.cancel();
             }
