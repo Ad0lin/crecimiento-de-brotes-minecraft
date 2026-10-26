@@ -31,7 +31,14 @@ public abstract class TreeWriteAuditMixin {
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        CURRENT.set(new TreeGenerationBuffer());
+        // La fotografia se obtiene antes de que
+        // este TreeFeature genere sus bloques.
+        CURRENT.set(
+            new TreeGenerationBuffer(
+                context.getWorld(),
+                context.getOrigin()
+            )
+        );
     }
 
     @Inject(
@@ -43,22 +50,12 @@ public abstract class TreeWriteAuditMixin {
             CallbackInfoReturnable<Boolean> cir) {
 
         TreeGenerationBuffer buffer = CURRENT.get();
+
         CURRENT.remove();
 
-        if (buffer == null) {
-            return;
+        if (buffer != null) {
+            buffer.printSummary(cir.getReturnValue());
         }
-
-        System.out.println(
-            "[Unrestricted Trees BUFFER]"
-            + " | Vanilla success: " + cir.getReturnValue()
-            + " | Escrituras: " + buffer.getTotalWrites()
-            + " | Posiciones: " + buffer.getUniquePositions()
-            + " | Conflictos preliminares: "
-            + buffer.getBlockedWrites()
-            + " | Primer conflicto: "
-            + buffer.getFirstBlockedPosition()
-        );
     }
 
     private static void unrestricted$record(
@@ -68,9 +65,11 @@ public abstract class TreeWriteAuditMixin {
 
         TreeGenerationBuffer buffer = CURRENT.get();
 
-        if (buffer != null
-                && world instanceof WorldAccess access) {
+        if (buffer == null) {
+            return;
+        }
 
+        if (world instanceof WorldAccess access) {
             buffer.record(access, pos, state);
         }
     }
