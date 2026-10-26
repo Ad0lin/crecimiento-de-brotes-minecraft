@@ -12,6 +12,20 @@ import java.util.Map;
 
 public final class TreeGenerationBuffer {
 
+    private static final ThreadLocal<TreeGenerationBuffer> ACTIVE = new ThreadLocal<>();
+
+    public static void activate(TreeGenerationBuffer buffer) {
+        ACTIVE.set(buffer);
+    }
+
+    public static TreeGenerationBuffer active() {
+        return ACTIVE.get();
+    }
+
+    public static void clearActive() {
+        ACTIVE.remove();
+    }
+
     // Area de captura alrededor del origen del arbol.
     // Es una region de diagnostico, no un limite
     // definitivo de generacion.
@@ -177,6 +191,27 @@ public final class TreeGenerationBuffer {
             + " | Primer bloque preexistente: "
             + firstProtectedPosition
         );
+    }
+
+    /**
+     * Consulta la fotografia ANTERIOR a la generacion.
+     * Un bloque colocado durante el crecimiento no se considera obstaculo
+     * preexistente. Fuera de la fotografia se deniega por seguridad.
+     */
+    public boolean mayWriteAt(BlockPos pos) {
+        if (!isInsideSnapshot(pos)) {
+            return false;
+        }
+        BlockState original = originalStates.get(pos);
+        return original == null || TreePlacementRules.canReplace(original);
+    }
+
+    public String originalDescription(BlockPos pos) {
+        if (!isInsideSnapshot(pos)) {
+            return "FUERA_DE_CAPTURA";
+        }
+        BlockState state = originalStates.get(pos);
+        return state == null ? "minecraft:air" : state.getBlock().toString();
     }
 
     public Map<BlockPos, BlockState> getProposedStates() {
