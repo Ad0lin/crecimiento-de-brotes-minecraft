@@ -1,4 +1,3 @@
-
 package com.unrestricted;
 
 import net.minecraft.block.BlockState;
@@ -12,26 +11,12 @@ import java.util.Map;
 
 public final class TreeGenerationBuffer {
 
-    private static final ThreadLocal<TreeGenerationBuffer> ACTIVE = new ThreadLocal<>();
-
-    public static void activate(TreeGenerationBuffer buffer) {
-        ACTIVE.set(buffer);
-    }
-
-    public static TreeGenerationBuffer active() {
-        return ACTIVE.get();
-    }
-
-    public static void clearActive() {
-        ACTIVE.remove();
-    }
-
-    // Area de captura alrededor del origen del arbol.
-    // Es una region de diagnostico, no un limite
-    // definitivo de generacion.
     private static final int RADIUS = 12;
     private static final int BELOW = 3;
     private static final int ABOVE = 45;
+
+    private static final ThreadLocal<TreeGenerationBuffer> ACTIVE =
+            new ThreadLocal<>();
 
     private final Map<BlockPos, BlockState> originalStates =
             new LinkedHashMap<>();
@@ -54,27 +39,22 @@ public final class TreeGenerationBuffer {
 
         this.origin = origin.toImmutable();
 
-        // Capturar los estados ANTES de generar.
-        // Guardamos solamente los bloques que
-        // no son aire para reducir memoria.
         for (int x = -RADIUS; x <= RADIUS; x++) {
             for (int z = -RADIUS; z <= RADIUS; z++) {
                 for (int y = -BELOW; y <= ABOVE; y++) {
 
-                    BlockPos pos =
-                            origin.add(x, y, z);
+                    BlockPos pos = origin.add(x, y, z);
 
                     if (world.isOutOfHeightLimit(pos)) {
                         continue;
                     }
 
-                    BlockState state =
-                            world.getBlockState(pos);
+                    BlockState state = world.getBlockState(pos);
 
                     if (!state.isAir()) {
                         originalStates.put(
-                            pos.toImmutable(),
-                            state
+                                pos.toImmutable(),
+                                state
                         );
                     }
                 }
@@ -82,14 +62,58 @@ public final class TreeGenerationBuffer {
         }
     }
 
-    private boolean isInsideSnapshot(BlockPos pos) {
+    public static void activate(TreeGenerationBuffer buffer) {
+        ACTIVE.set(buffer);
+    }
 
-        return Math.abs(pos.getX() - origin.getX())
-                    <= RADIUS
-                && Math.abs(pos.getZ() - origin.getZ())
-                    <= RADIUS
+    public static TreeGenerationBuffer active() {
+        return ACTIVE.get();
+    }
+
+    public static void clearActive() {
+        ACTIVE.remove();
+    }
+
+    private boolean isInsideSnapshot(BlockPos pos) {
+        return Math.abs(pos.getX() - origin.getX()) <= RADIUS
+                && Math.abs(pos.getZ() - origin.getZ()) <= RADIUS
                 && pos.getY() >= origin.getY() - BELOW
                 && pos.getY() <= origin.getY() + ABOVE;
+    }
+
+    public boolean mayWriteAt(BlockPos pos) {
+        if (!isInsideSnapshot(pos)) {
+            return false;
+        }
+
+        BlockState original = originalStates.getOrDefault(
+                pos.toImmutable(),
+                Blocks.AIR.getDefaultState()
+        );
+
+        if (original.isAir()) {
+            return true;
+        }
+
+        if (original.getBlock() instanceof SaplingBlock) {
+            return true;
+        }
+
+        return TreePlacementRules.canReplace(original);
+    }
+
+    public String originalDescription(BlockPos pos) {
+        if (!isInsideSnapshot(pos)) {
+            return "FUERA_DE_CAPTURA";
+        }
+
+        BlockState state = originalStates.get(pos.toImmutable());
+
+        if (state == null) {
+            return Blocks.AIR.getTranslationKey();
+        }
+
+        return state.getBlock().toString();
     }
 
     public void record(
@@ -114,34 +138,32 @@ public final class TreeGenerationBuffer {
 
         if (inside) {
             original = originalStates.getOrDefault(
-                immutablePos,
-                Blocks.AIR.getDefaultState()
+                    immutablePos,
+                    Blocks.AIR.getDefaultState()
             );
         } else {
-            // No podemos reconstruir con seguridad
-            // el estado original fuera de la captura.
             outsideSnapshotWrites++;
             original = null;
         }
 
-        // Registrar el ultimo estado propuesto
-        // para cada posicion.
         proposedStates.put(immutablePos, proposed);
 
-        if (totalWrites <= 12) {
-            System.out.println(
-                "[Unrestricted Trees SNAPSHOT DETAIL]"
-                + " | Escritura: " + totalWrites
-                + " | Posicion: "
-                + immutablePos.toShortString()
-                + " | Original: "
-                + (original == null
-                    ? "FUERA_DE_CAPTURA"
-                    : original.getBlock()
-                        .getTranslationKey())
-                + " | Propuesto: "
-                + proposed.getBlock().getTranslationKey()
-                + " | Primera vez: " + firstWrite
+        if (UnrestrictedTreesDebug.BUFFER_LOGS
+                && totalWrites <= 12) {
+
+            UnrestrictedTreesDebug.logBuffer(
+                    "[Unrestricted Trees SNAPSHOT DETAIL]"
+                            + " | Escritura: " + totalWrites
+                            + " | Posicion: "
+                            + immutablePos.toShortString()
+                            + " | Original: "
+                            + (original == null
+                            ? "FUERA_DE_CAPTURA"
+                            : original.getBlock()
+                            .getTranslationKey())
+                            + " | Propuesto: "
+                            + proposed.getBlock().getTranslationKey()
+                            + " | Primera vez: " + firstWrite
             );
         }
 
@@ -149,69 +171,46 @@ public final class TreeGenerationBuffer {
             return;
         }
 
-        // Una escritura que mantiene el mismo estado
-        // no cuenta como modificacion.
         if (original.equals(proposed)) {
             return;
         }
 
-        // El aire inicial puede ocuparse.
         if (original.isAir()) {
             return;
         }
 
-        // Contamos aparte los reemplazos sobre
-        // bloques originalmente preexistentes.
-        // Los brotes se excluyen provisionalmente
-        // porque Vanilla debe poder consumirlos.
         if (original.getBlock() instanceof SaplingBlock) {
             return;
         }
 
-        protectedWrites++;
+        if (!TreePlacementRules.canReplace(original)) {
+            protectedWrites++;
 
-        if (firstProtectedPosition == null) {
-            firstProtectedPosition = immutablePos;
+            if (firstProtectedPosition == null) {
+                firstProtectedPosition = immutablePos;
+            }
         }
     }
 
     public void printSummary(boolean vanillaSuccess) {
+        if (!UnrestrictedTreesDebug.BUFFER_LOGS) {
+            return;
+        }
 
-        System.out.println(
-            "[Unrestricted Trees SNAPSHOT]"
-            + " | Origen: " + origin.toShortString()
-            + " | Vanilla success: " + vanillaSuccess
-            + " | Escrituras: " + totalWrites
-            + " | Posiciones: " + proposedStates.size()
-            + " | Repetidas: " + repeatedWrites
-            + " | Sobre bloques preexistentes: "
-            + protectedWrites
-            + " | Fuera de captura: "
-            + outsideSnapshotWrites
-            + " | Primer bloque preexistente: "
-            + firstProtectedPosition
+        UnrestrictedTreesDebug.logBuffer(
+                "[Unrestricted Trees SNAPSHOT]"
+                        + " | Origen: " + origin.toShortString()
+                        + " | Vanilla success: " + vanillaSuccess
+                        + " | Escrituras: " + totalWrites
+                        + " | Posiciones: " + proposedStates.size()
+                        + " | Repetidas: " + repeatedWrites
+                        + " | Sobre bloques preexistentes: "
+                        + protectedWrites
+                        + " | Fuera de captura: "
+                        + outsideSnapshotWrites
+                        + " | Primer bloque preexistente: "
+                        + firstProtectedPosition
         );
-    }
-
-    /**
-     * Consulta la fotografia ANTERIOR a la generacion.
-     * Un bloque colocado durante el crecimiento no se considera obstaculo
-     * preexistente. Fuera de la fotografia se deniega por seguridad.
-     */
-    public boolean mayWriteAt(BlockPos pos) {
-        if (!isInsideSnapshot(pos)) {
-            return false;
-        }
-        BlockState original = originalStates.get(pos);
-        return original == null || TreePlacementRules.canReplace(original);
-    }
-
-    public String originalDescription(BlockPos pos) {
-        if (!isInsideSnapshot(pos)) {
-            return "FUERA_DE_CAPTURA";
-        }
-        BlockState state = originalStates.get(pos);
-        return state == null ? "minecraft:air" : state.getBlock().toString();
     }
 
     public Map<BlockPos, BlockState> getProposedStates() {
