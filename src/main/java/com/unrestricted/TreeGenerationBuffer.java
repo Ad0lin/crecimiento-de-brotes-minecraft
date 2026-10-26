@@ -27,7 +27,13 @@ public final class TreeGenerationBuffer {
 
         BlockPos immutablePos = pos.toImmutable();
 
-        // Guardar el estado original solo la primera vez.
+        // Registrar si esta posicion ya fue procesada.
+        // Se comprueba antes de actualizar proposedStates.
+        boolean firstWrite =
+                !proposedStates.containsKey(immutablePos);
+
+        // Guardar el estado observado la primera vez
+        // que registramos esta posicion.
         originalStates.computeIfAbsent(
             immutablePos,
             p -> world.getBlockState(p)
@@ -38,10 +44,29 @@ public final class TreeGenerationBuffer {
 
         totalWrites++;
 
-        // La misma generacion puede escribir varias
+        // Diagnostico de las primeras 12 operaciones.
+        // No modifica ni bloquea ninguna escritura.
+        if (totalWrites <= 12) {
+
+            System.out.println(
+                "[Unrestricted Trees BUFFER DETAIL]"
+                + " | Escritura: " + totalWrites
+                + " | Posicion: "
+                + immutablePos.toShortString()
+                + " | Original observado: "
+                + original.getBlock().getTranslationKey()
+                + " | Propuesto: "
+                + proposed.getBlock().getTranslationKey()
+                + " | Primera vez: " + firstWrite
+            );
+        }
+
+        // Una misma generacion puede escribir varias
         // veces sobre una posicion provisional.
         proposedStates.put(immutablePos, proposed);
 
+        // Deteccion preliminar de conflictos.
+        // No cancela ninguna operacion.
         if (!original.equals(proposed)
                 && !original.isAir()
                 && !TreePlacementRules.canReplace(original)) {
