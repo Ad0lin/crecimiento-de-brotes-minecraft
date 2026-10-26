@@ -2,6 +2,7 @@
 package com.unrestricted.mixin;
 
 import com.unrestricted.TreePlacementRules;
+import com.unrestricted.TreeGenerationBuffer;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
@@ -105,12 +106,20 @@ public abstract class TreeFeatureMixin {
             return false;
         }
 
-        BlockState existing = access.getBlockState(pos);
+        TreeGenerationBuffer buffer =
+                TreeGenerationBuffer.active();
 
-        if (!TreePlacementRules.canReplace(existing)) {
+        if (buffer == null) {
+            // Sin fotografia previa no hay autorizacion segura.
+            unrestricted$logBlocked(pos, "Sin snapshot activo");
+            return false;
+        }
+
+        if (!buffer.mayWriteAt(pos)) {
             unrestricted$logBlocked(
                 pos,
-                "Existente: " + existing.getBlock()
+                "Original: " + buffer.originalDescription(pos)
+                + " | Actual: " + access.getBlockState(pos).getBlock()
                 + " | Propuesto: " + proposed.getBlock()
             );
             return false;

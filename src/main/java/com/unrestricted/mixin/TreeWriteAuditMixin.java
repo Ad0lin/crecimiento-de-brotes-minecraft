@@ -30,9 +30,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = TreeFeature.class, priority = 1100)
 public abstract class TreeWriteAuditMixin {
 
-    private static final ThreadLocal<TreeGenerationBuffer>
-            CURRENT = new ThreadLocal<>();
-
     @Inject(
         method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
         at = @At("HEAD")
@@ -41,7 +38,7 @@ public abstract class TreeWriteAuditMixin {
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        CURRENT.set(
+        TreeGenerationBuffer.activate(
             new TreeGenerationBuffer(
                 context.getWorld(),
                 context.getOrigin()
@@ -57,9 +54,9 @@ public abstract class TreeWriteAuditMixin {
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        TreeGenerationBuffer buffer = CURRENT.get();
+        TreeGenerationBuffer buffer = TreeGenerationBuffer.active();
 
-        CURRENT.remove();
+        TreeGenerationBuffer.clearActive();
 
         if (buffer != null) {
             buffer.printSummary(cir.getReturnValue());
@@ -71,7 +68,7 @@ public abstract class TreeWriteAuditMixin {
             BlockPos pos,
             BlockState state) {
 
-        TreeGenerationBuffer buffer = CURRENT.get();
+        TreeGenerationBuffer buffer = TreeGenerationBuffer.active();
 
         if (buffer == null) {
             return;
