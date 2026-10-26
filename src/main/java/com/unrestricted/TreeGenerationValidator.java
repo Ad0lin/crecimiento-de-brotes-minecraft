@@ -15,31 +15,28 @@ public final class TreeGenerationValidator {
     }
 
     /**
-     * Comprueba una propuesta de generacion.
+     * Valida la propuesta final contra el mundo original.
      *
-     * plannedBlocks:
-     *   posiciones y bloques que el arbol quiere colocar.
+     * plannedBlocks: estado final propuesto del arbol.
+     * consumedSaplings: brotes de esta generacion.
      *
-     * consumedSaplings:
-     *   posiciones exactas de los brotes que se
-     *   consumiran durante el crecimiento.
-     *
-     * No modifica el mundo.
+     * El mundo recibido NO debe contener las
+     * modificaciones provisionales del arbol.
      */
     public static ValidationResult validate(
-            BlockView world,
+            BlockView originalWorld,
             Map<BlockPos, BlockState> plannedBlocks,
             Set<BlockPos> consumedSaplings) {
 
         if (plannedBlocks == null || plannedBlocks.isEmpty()) {
             return ValidationResult.reject(
-                null, "No hay bloques para generar"
+                null, "Propuesta vacia"
             );
         }
 
         if (consumedSaplings == null) {
             return ValidationResult.reject(
-                null, "No se indicaron los brotes"
+                null, "Brotes no definidos"
             );
         }
 
@@ -51,45 +48,49 @@ public final class TreeGenerationValidator {
 
             if (pos == null || proposed == null) {
                 return ValidationResult.reject(
-                    pos, "Posicion o bloque invalido"
+                    pos, "Entrada invalida"
                 );
             }
 
-            if (world.isOutOfHeightLimit(pos)) {
+            if (originalWorld.isOutOfHeightLimit(pos)) {
                 return ValidationResult.reject(
-                    pos, "Fuera del limite del mundo"
+                    pos, "Fuera del mundo"
                 );
             }
 
-            // La generacion no debe destruir bloques
-            // colocando aire.
-            if (proposed.isAir()) {
-                return ValidationResult.reject(
-                    pos, "Intento de colocar aire"
-                );
-            }
+            BlockState original =
+                originalWorld.getBlockState(pos);
 
-            BlockState existing = world.getBlockState(pos);
-
-            // No hay bloque que proteger.
-            if (existing.isAir()) {
+            // No existe una modificacion real.
+            if (original.equals(proposed)) {
                 continue;
             }
 
-            // Unicamente se pueden consumir los brotes
-            // pertenecientes a este crecimiento.
+            // Aceptar el espacio originalmente vacio.
+            if (original.isAir()) {
+                // Evitar que el arbol coloque aire
+                // como una operacion de eliminacion.
+                if (proposed.isAir()) {
+                    continue;
+                }
+
+                continue;
+            }
+
+            // Permitir consumir solamente los brotes
+            // que pertenecen a esta generacion.
             if (consumedSaplings.contains(pos)
-                    && existing.getBlock()
+                    && original.getBlock()
                     instanceof SaplingBlock) {
                 continue;
             }
 
-            // Cualquier otro bloque preexistente
-            // provoca el rechazo de todo el arbol.
+            // Cualquier otra modificacion de bloques
+            // preexistentes queda prohibida.
             return ValidationResult.reject(
                 pos,
                 "Bloque protegido: "
-                    + existing.getBlock()
+                    + original.getBlock()
                         .getTranslationKey()
             );
         }
