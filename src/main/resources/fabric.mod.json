@@ -13,15 +13,14 @@
       }
     }
   ],
-"contributors": [
-	  " ",
-	  "Ideologo y tester: Gaston Pares",
-	  " ",
-	  "Desarrollador principal: ChatGPT (OpenAI) - AI-assisted code development, debugging and technical design, sin ChatGPT no hubiera sido posible el mod",
-	  " ",
-	  "contribucion base: Gemini IA (Google)"
-  ]
-}
+  "contributors": [
+    " ",
+    "Ideologo y tester: Gaston Pares",
+    " ",
+    "Desarrollador principal: ChatGPT (OpenAI) - AI-assisted code development, debugging and technical design, sin ChatGPT no hubiera sido posible el mod",
+    " ",
+    "contribucion base: Gemini IA (Google)"
+  ],
   "contact": {
     "homepage": "https://github.com/Ad0lin/crecimiento-de-brotes-minecraft",
     "sources": "https://github.com/Ad0lin/crecimiento-de-brotes-minecraft",
@@ -36,3 +35,4 @@
     "fabricloader": ">=0.15.0",
     "minecraft": "1.21.11"
   }
+}
