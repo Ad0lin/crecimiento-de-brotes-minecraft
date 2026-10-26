@@ -1,8 +1,8 @@
-
 package com.unrestricted.mixin;
 
 import com.unrestricted.TreeGenerationBuffer;
 import com.unrestricted.TreePlacementRules;
+import com.unrestricted.UnrestrictedTreesDebug;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
@@ -11,10 +11,10 @@ import net.minecraft.world.StructureWorldAccess;
 import net.minecraft.world.TestableWorld;
 import net.minecraft.world.gen.feature.TreeFeature;
 import net.minecraft.world.gen.feature.TreeFeatureConfig;
+import net.minecraft.world.gen.trunk.CherryTrunkPlacer;
+import net.minecraft.world.gen.trunk.ForkingTrunkPlacer;
 import net.minecraft.world.gen.trunk.GiantTrunkPlacer;
 import net.minecraft.world.gen.trunk.StraightTrunkPlacer;
-import net.minecraft.world.gen.trunk.ForkingTrunkPlacer;
-import net.minecraft.world.gen.trunk.CherryTrunkPlacer;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -38,14 +38,10 @@ public abstract class TreeFeatureMixin {
 
     private static final int MAX_LOGS = 30;
 
-    /**
-     * Conserva la politica de reemplazo de 1.51.
-     * No considera reemplazables los bloques protegidos.
-     */
     @Inject(
-        method = "canReplace(Lnet/minecraft/world/TestableWorld;Lnet/minecraft/util/math/BlockPos;)Z",
-        at = @At("HEAD"),
-        cancellable = true
+            method = "canReplace(Lnet/minecraft/world/TestableWorld;Lnet/minecraft/util/math/BlockPos;)Z",
+            at = @At("HEAD"),
+            cancellable = true
     )
     private static void unrestricted$protectBlocks(
             TestableWorld world,
@@ -62,13 +58,10 @@ public abstract class TreeFeatureMixin {
         }
     }
 
-    /**
-     * Protege las escrituras normales de TreeFeature.
-     */
     @Inject(
-        method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
-        at = @At("HEAD"),
-        cancellable = true
+            method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
+            at = @At("HEAD"),
+            cancellable = true
     )
     private void unrestricted$protectNormalWrites(
             ModifiableWorld world,
@@ -81,13 +74,10 @@ public abstract class TreeFeatureMixin {
         }
     }
 
-    /**
-     * Protege las escrituras sin actualizacion de vecinos.
-     */
     @Inject(
-        method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
-        at = @At("HEAD"),
-        cancellable = true
+            method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
+            at = @At("HEAD"),
+            cancellable = true
     )
     private static void unrestricted$protectSilentWrites(
             ModifiableWorld world,
@@ -100,9 +90,6 @@ public abstract class TreeFeatureMixin {
         }
     }
 
-    /**
-     * Verifica el bloque original, no solamente el actual.
-     */
     private static boolean unrestricted$canWrite(
             ModifiableWorld world,
             BlockPos pos,
@@ -131,10 +118,10 @@ public abstract class TreeFeatureMixin {
             unrestricted$logBlocked(
                     pos,
                     "Original: " + buffer.originalDescription(pos)
-                    + " | Actual: "
-                    + access.getBlockState(pos).getBlock()
-                    + " | Propuesto: "
-                    + proposed.getBlock()
+                            + " | Actual: "
+                            + access.getBlockState(pos).getBlock()
+                            + " | Propuesto: "
+                            + proposed.getBlock()
             );
             return false;
         }
@@ -148,26 +135,17 @@ public abstract class TreeFeatureMixin {
 
         int count = BLOCKED_WRITE_COUNT.incrementAndGet();
 
-        if (count <= MAX_LOGS) {
-            System.out.println(
+        if (UnrestrictedTreesDebug.WRITE_LOGS
+                && count <= MAX_LOGS) {
+
+            UnrestrictedTreesDebug.logWrite(
                     "[Unrestricted Trees WRITE BLOCKED]"
-                    + " | Posicion: " + pos.toShortString()
-                    + " | Motivo: " + reason
+                            + " | Posicion: " + pos.toShortString()
+                            + " | Motivo: " + reason
             );
         }
     }
 
-    /**
-     * Comprueba el eje inicial del tronco.
-     *
-     * 1x1: una columna.
-     * 2x2: cuatro columnas.
-     *
-     * Los troncos ramificados pueden desviarse del eje
-     * central. Esas desviaciones no se validan aqui:
-     * sus colocaciones deben seguir siendo filtradas
-     * por los mecanismos de proteccion existentes.
-     */
     private static boolean unrestricted$trunkIsClear(
             TestableWorld world,
             BlockPos origin,
@@ -194,12 +172,15 @@ public abstract class TreeFeatureMixin {
                     );
 
                     if (!replaceable) {
-                        System.out.println(
-                                "[Unrestricted Trees TRUNK BLOCKED]"
-                                + " | Posicion: "
-                                + cursor.toShortString()
-                                + " | Ancho: " + width
-                        );
+
+                        if (UnrestrictedTreesDebug.SPACE_LOGS) {
+                            UnrestrictedTreesDebug.logSpace(
+                                    "[Unrestricted Trees TRUNK BLOCKED]"
+                                            + " | Posicion: "
+                                            + cursor.toShortString()
+                                            + " | Ancho: " + width
+                            );
+                        }
 
                         return false;
                     }
@@ -210,23 +191,10 @@ public abstract class TreeFeatureMixin {
         return true;
     }
 
-    /**
-     * VERSION EXPERIMENTAL 1.52
-     *
-     * Conserva:
-     * - GiantTrunkPlacer (arboles grandes 2x2)
-     * - StraightTrunkPlacer (troncos rectos 1x1)
-     *
-     * Agrega:
-     * - ForkingTrunkPlacer (acacia)
-     * - CherryTrunkPlacer (cerezo)
-     *
-     * No modifica los demas generadores.
-     */
     @Inject(
-        method = "getTopPosition(Lnet/minecraft/world/TestableWorld;ILnet/minecraft/util/math/BlockPos;Lnet/minecraft/world/gen/feature/TreeFeatureConfig;)I",
-        at = @At("RETURN"),
-        cancellable = true
+            method = "getTopPosition(Lnet/minecraft/world/TestableWorld;ILnet/minecraft/util/math/BlockPos;Lnet/minecraft/world/gen/feature/TreeFeatureConfig;)I",
+            at = @At("RETURN"),
+            cancellable = true
     )
     private void unrestricted$relaxLateralSpace(
             TestableWorld world,
@@ -239,17 +207,18 @@ public abstract class TreeFeatureMixin {
 
         int testNumber = SPACE_TEST_COUNT.incrementAndGet();
 
-        if (testNumber <= MAX_LOGS) {
-            System.out.println(
+        if (UnrestrictedTreesDebug.SPACE_LOGS
+                && testNumber <= MAX_LOGS) {
+
+            UnrestrictedTreesDebug.logSpace(
                     "[Unrestricted Trees SPACE TEST]"
-                    + " | Prueba: " + testNumber
-                    + " | Origen: " + origin.toShortString()
-                    + " | Altura solicitada: " + requestedHeight
-                    + " | Altura Vanilla: " + vanillaHeight
+                            + " | Prueba: " + testNumber
+                            + " | Origen: " + origin.toShortString()
+                            + " | Altura solicitada: " + requestedHeight
+                            + " | Altura Vanilla: " + vanillaHeight
             );
         }
 
-        // No alterar los arboles que ya pueden crecer.
         if (vanillaHeight >= requestedHeight) {
             return;
         }
@@ -284,19 +253,16 @@ public abstract class TreeFeatureMixin {
             placerName = "CherryTrunkPlacer";
 
         } else {
-
             return;
         }
 
         TreeGenerationBuffer snapshot =
                 TreeGenerationBuffer.active();
 
-        // No modificar alturas sin captura inicial.
         if (snapshot == null) {
             return;
         }
 
-        // El eje central de arranque debe estar libre.
         if (!unrestricted$trunkIsClear(
                 world,
                 origin,
@@ -306,22 +272,22 @@ public abstract class TreeFeatureMixin {
             return;
         }
 
-        // Relajar solamente el resultado de espacio.
-        // No autorizar la sustitucion de bloques.
         cir.setReturnValue(requestedHeight);
 
         int overrideNumber =
                 SPACE_OVERRIDE_COUNT.incrementAndGet();
 
-        if (overrideNumber <= MAX_LOGS) {
-            System.out.println(
+        if (UnrestrictedTreesDebug.SPACE_LOGS
+                && overrideNumber <= MAX_LOGS) {
+
+            UnrestrictedTreesDebug.logSpace(
                     "[Unrestricted Trees SPACE OVERRIDE]"
-                    + " | Origen: " + origin.toShortString()
-                    + " | Vanilla: " + vanillaHeight
-                    + " | Nueva altura: " + requestedHeight
-                    + " | Generador: " + placerName
-                    + " | Ancho tronco: " + trunkWidth
-                    + " | Eje central: LIBRE"
+                            + " | Origen: " + origin.toShortString()
+                            + " | Vanilla: " + vanillaHeight
+                            + " | Nueva altura: " + requestedHeight
+                            + " | Generador: " + placerName
+                            + " | Ancho tronco: " + trunkWidth
+                            + " | Eje central: LIBRE"
             );
         }
     }
