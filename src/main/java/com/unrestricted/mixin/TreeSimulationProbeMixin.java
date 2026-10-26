@@ -15,12 +15,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.net.URL;
+import java.security.CodeSource;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Mixin(TreeFeature.class)
 public abstract class TreeSimulationProbeMixin {
 
-    // Una sola prueba por inicio del juego.
+    private static final String DIAGNOSTIC_VERSION =
+            "UT-DIAG-2026-10-26-A";
+
     private static final AtomicBoolean TESTED =
             new AtomicBoolean(false);
 
@@ -36,33 +40,70 @@ public abstract class TreeSimulationProbeMixin {
             return;
         }
 
+        System.out.println(
+            "[Unrestricted Trees DIAGNOSTIC START]"
+            + " | Version: " + DIAGNOSTIC_VERSION
+            + " | Origin: "
+            + context.getOrigin().toShortString()
+        );
+
         try {
+            CodeSource source =
+                    TreeSimulationWorld.class
+                            .getProtectionDomain()
+                            .getCodeSource();
+
+            URL location =
+                    source == null
+                            ? null
+                            : source.getLocation();
+
+            System.out.println(
+                "[Unrestricted Trees CLASS SOURCE]"
+                + " | Location: " + location
+                + " | ClassLoader: "
+                + TreeSimulationWorld.class
+                        .getClassLoader()
+        );
+
             BlockPos testPos =
                     context.getOrigin().up(2);
 
             BlockState originalBefore =
                     context.getWorld()
-                        .getBlockState(testPos);
+                            .getBlockState(testPos);
 
             TreeSimulationWorld simulation =
                     new TreeSimulationWorld(
                         context.getWorld()
                     );
 
+            System.out.println(
+                "[Unrestricted Trees DIAGNOSTIC STEP]"
+                + " | Simulation created"
+            );
+
             boolean staged =
-                    simulation.getWorld().setBlockState(
-                        testPos,
-                        Blocks.OAK_LOG.getDefaultState(),
-                        3
-                    );
+                    simulation.getWorld()
+                            .setBlockState(
+                                testPos,
+                                Blocks.OAK_LOG.getDefaultState(),
+                                3
+                            );
+
+            System.out.println(
+                "[Unrestricted Trees DIAGNOSTIC STEP]"
+                + " | Virtual write returned: "
+                + staged
+            );
 
             BlockState virtualAfter =
                     simulation.getWorld()
-                        .getBlockState(testPos);
+                            .getBlockState(testPos);
 
             BlockState realAfter =
                     context.getWorld()
-                        .getBlockState(testPos);
+                            .getBlockState(testPos);
 
             boolean virtualCorrect =
                     virtualAfter.isOf(Blocks.OAK_LOG);
@@ -78,10 +119,9 @@ public abstract class TreeSimulationProbeMixin {
 
             System.out.println(
                 "[Unrestricted Trees SMOKE TEST]"
+                + " | Version: " + DIAGNOSTIC_VERSION
                 + " | Resultado: "
                 + (passed ? "PASS" : "FAIL")
-                + " | Posicion: "
-                + testPos.toShortString()
                 + " | Escrituras virtuales: "
                 + simulation.getTotalWrites()
                 + " | Virtual correcto: "
@@ -92,14 +132,24 @@ public abstract class TreeSimulationProbeMixin {
 
         } catch (Throwable exception) {
 
-            // Esta prueba no debe provocar
-            // un crash ni cancelar el arbol Vanilla.
             System.out.println(
-                "[Unrestricted Trees SMOKE TEST ERROR]"
+                "[Unrestricted Trees DIAGNOSTIC ERROR]"
+                + " | Version: " + DIAGNOSTIC_VERSION
                 + " | Tipo: "
                 + exception.getClass().getName()
                 + " | Motivo: "
                 + exception.getMessage()
+            );
+
+            // Registrar la traza completa para
+            // localizar la clase y metodo exactos.
+            exception.printStackTrace(System.out);
+
+        } finally {
+
+            System.out.println(
+                "[Unrestricted Trees DIAGNOSTIC END]"
+                + " | Version: " + DIAGNOSTIC_VERSION
             );
         }
     }
