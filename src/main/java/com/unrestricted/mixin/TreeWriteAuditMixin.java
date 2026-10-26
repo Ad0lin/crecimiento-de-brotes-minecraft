@@ -17,7 +17,17 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(TreeFeature.class)
+/**
+ * Auditoria de intentos de escritura de TreeFeature.
+ *
+ * La prioridad 1100 permite registrar los intentos
+ * antes de que otros Mixins de prioridad 1000
+ * puedan cancelarlos.
+ *
+ * IMPORTANTE: los registros NO garantizan
+ * que la escritura se haya aplicado al mundo.
+ */
+@Mixin(value = TreeFeature.class, priority = 1100)
 public abstract class TreeWriteAuditMixin {
 
     private static final ThreadLocal<TreeGenerationBuffer>
@@ -31,8 +41,6 @@ public abstract class TreeWriteAuditMixin {
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        // La fotografia se obtiene antes de que
-        // este TreeFeature genere sus bloques.
         CURRENT.set(
             new TreeGenerationBuffer(
                 context.getWorld(),
