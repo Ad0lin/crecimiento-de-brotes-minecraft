@@ -3,10 +3,10 @@ package com.unrestricted.mixin;
 
 import com.unrestricted.TreePlacementRules;
 
-import net.minecraft.class_2338;
-import net.minecraft.class_2944;
-import net.minecraft.class_3746;
-import net.minecraft.class_4643;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.TestableWorld;
+import net.minecraft.world.gen.feature.TreeFeature;
+import net.minecraft.world.gen.feature.TreeFeatureConfig;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Mixin(class_2944.class)
+@Mixin(TreeFeature.class)
 public abstract class TreeFeatureMixin {
 
     private static final AtomicInteger SPACE_TEST_COUNT =
@@ -26,8 +26,8 @@ public abstract class TreeFeatureMixin {
     /**
      * Conserva la proteccion existente.
      *
-     * No autoriza que un arbol reemplace
-     * bloques que nuestra politica protege.
+     * No autoriza reemplazar bloques protegidos.
+     * No fuerza el crecimiento.
      */
     @Inject(
         method = "canReplace(Lnet/minecraft/world/TestableWorld;Lnet/minecraft/util/math/BlockPos;)Z",
@@ -35,11 +35,11 @@ public abstract class TreeFeatureMixin {
         cancellable = true
     )
     private static void unrestricted$protectBlocks(
-            class_3746 world,
-            class_2338 pos,
+            TestableWorld world,
+            BlockPos pos,
             CallbackInfoReturnable<Boolean> cir) {
 
-        boolean allowed = world.method_16358(
+        boolean allowed = world.testBlockState(
             pos,
             TreePlacementRules::canReplace
         );
@@ -50,20 +50,19 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Diagnostico de altura disponible.
+     * Diagnostico de espacio disponible.
      *
-     * No altera el resultado de Vanilla.
-     * Solo registra los valores calculados.
+     * No altera ningun resultado de Vanilla.
      */
     @Inject(
         method = "getTopPosition(Lnet/minecraft/world/TestableWorld;ILnet/minecraft/util/math/BlockPos;Lnet/minecraft/world/gen/feature/TreeFeatureConfig;)I",
         at = @At("RETURN")
     )
     private void unrestricted$diagnoseSpace(
-            class_3746 world,
+            TestableWorld world,
             int requestedHeight,
-            class_2338 origin,
-            class_4643 config,
+            BlockPos origin,
+            TreeFeatureConfig config,
             CallbackInfoReturnable<Integer> cir) {
 
         int testNumber =
