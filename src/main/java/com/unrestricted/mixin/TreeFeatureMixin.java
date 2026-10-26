@@ -13,6 +13,8 @@ import net.minecraft.world.gen.feature.TreeFeature;
 import net.minecraft.world.gen.feature.TreeFeatureConfig;
 import net.minecraft.world.gen.trunk.GiantTrunkPlacer;
 import net.minecraft.world.gen.trunk.StraightTrunkPlacer;
+import net.minecraft.world.gen.trunk.ForkingTrunkPlacer;
+import net.minecraft.world.gen.trunk.CherryTrunkPlacer;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -37,10 +39,8 @@ public abstract class TreeFeatureMixin {
     private static final int MAX_LOGS = 30;
 
     /**
-     * Conserva la politica de reemplazo de la 1.50.
-     *
-     * Nunca considera reemplazable un bloque protegido
-     * solamente para facilitar el crecimiento.
+     * Conserva la politica de reemplazo de 1.51.
+     * No considera reemplazables los bloques protegidos.
      */
     @Inject(
         method = "canReplace(Lnet/minecraft/world/TestableWorld;Lnet/minecraft/util/math/BlockPos;)Z",
@@ -63,7 +63,7 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Proteccion de escrituras normales.
+     * Protege las escrituras normales de TreeFeature.
      */
     @Inject(
         method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
@@ -82,7 +82,7 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Proteccion de escrituras sin actualizar vecinos.
+     * Protege las escrituras sin actualizacion de vecinos.
      */
     @Inject(
         method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
@@ -101,8 +101,7 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Consulta el estado original almacenado
-     * por TreeGenerationBuffer.
+     * Verifica el bloque original, no solamente el actual.
      */
     private static boolean unrestricted$canWrite(
             ModifiableWorld world,
@@ -159,13 +158,15 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Comprueba las columnas indispensables del tronco.
+     * Comprueba el eje inicial del tronco.
      *
-     * width = 1 para arboles rectos 1x1.
-     * width = 2 para arboles gigantes 2x2.
+     * 1x1: una columna.
+     * 2x2: cuatro columnas.
      *
-     * Los obstaculos laterales no forman parte
-     * de esta comprobacion.
+     * Los troncos ramificados pueden desviarse del eje
+     * central. Esas desviaciones no se validan aqui:
+     * sus colocaciones deben seguir siendo filtradas
+     * por los mecanismos de proteccion existentes.
      */
     private static boolean unrestricted$trunkIsClear(
             TestableWorld world,
@@ -193,7 +194,6 @@ public abstract class TreeFeatureMixin {
                     );
 
                     if (!replaceable) {
-
                         System.out.println(
                                 "[Unrestricted Trees TRUNK BLOCKED]"
                                 + " | Posicion: "
@@ -211,17 +211,17 @@ public abstract class TreeFeatureMixin {
     }
 
     /**
-     * Relaja la comprobacion lateral de Vanilla.
+     * VERSION EXPERIMENTAL 1.52
      *
-     * VERSION 1.51:
+     * Conserva:
+     * - GiantTrunkPlacer (arboles grandes 2x2)
+     * - StraightTrunkPlacer (troncos rectos 1x1)
      *
-     * - GiantTrunkPlacer: conserva el soporte 2x2.
-     * - StraightTrunkPlacer: agrega soporte 1x1.
+     * Agrega:
+     * - ForkingTrunkPlacer (acacia)
+     * - CherryTrunkPlacer (cerezo)
      *
-     * No modifica otros tipos de colocadores.
-     *
-     * Se conserva la validacion del tronco central
-     * y el requisito de tener snapshot activo.
+     * No modifica los demas generadores.
      */
     @Inject(
         method = "getTopPosition(Lnet/minecraft/world/TestableWorld;ILnet/minecraft/util/math/BlockPos;Lnet/minecraft/world/gen/feature/TreeFeatureConfig;)I",
@@ -249,7 +249,7 @@ public abstract class TreeFeatureMixin {
             );
         }
 
-        // Si Vanilla ya permite crecer, no intervenimos.
+        // No alterar los arboles que ya pueden crecer.
         if (vanillaHeight >= requestedHeight) {
             return;
         }
@@ -269,20 +269,34 @@ public abstract class TreeFeatureMixin {
             trunkWidth = 1;
             placerName = "StraightTrunkPlacer";
 
+        } else if (
+                config.trunkPlacer instanceof ForkingTrunkPlacer
+        ) {
+
+            trunkWidth = 1;
+            placerName = "ForkingTrunkPlacer";
+
+        } else if (
+                config.trunkPlacer instanceof CherryTrunkPlacer
+        ) {
+
+            trunkWidth = 1;
+            placerName = "CherryTrunkPlacer";
+
         } else {
 
-            // Los generadores curvos y ramificados
-            // conservan la comprobacion Vanilla.
             return;
         }
 
         TreeGenerationBuffer snapshot =
                 TreeGenerationBuffer.active();
 
+        // No modificar alturas sin captura inicial.
         if (snapshot == null) {
             return;
         }
 
+        // El eje central de arranque debe estar libre.
         if (!unrestricted$trunkIsClear(
                 world,
                 origin,
@@ -292,9 +306,8 @@ public abstract class TreeFeatureMixin {
             return;
         }
 
-        // Solo se omite el rechazo lateral.
-        // Las escrituras continuan protegidas
-        // por los Mixins de la version 1.50.
+        // Relajar solamente el resultado de espacio.
+        // No autorizar la sustitucion de bloques.
         cir.setReturnValue(requestedHeight);
 
         int overrideNumber =
@@ -308,7 +321,7 @@ public abstract class TreeFeatureMixin {
                     + " | Nueva altura: " + requestedHeight
                     + " | Generador: " + placerName
                     + " | Ancho tronco: " + trunkWidth
-                    + " | Tronco central: LIBRE"
+                    + " | Eje central: LIBRE"
             );
         }
     }
