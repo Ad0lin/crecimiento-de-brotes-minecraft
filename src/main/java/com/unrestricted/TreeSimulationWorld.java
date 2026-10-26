@@ -2,6 +2,7 @@
 package com.unrestricted;
 
 import net.minecraft.block.BlockState;
+import net.minecraft.fluid.FluidState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.StructureWorldAccess;
 
@@ -9,22 +10,12 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/**
- * Mundo temporal para generar arboles sin colocar
- * sus bloques directamente en el mundo real.
- *
- * Esta clase todavia no se conecta a TreeFeature.
- *
- * Las operaciones desconocidas se rechazan para
- * evitar que una simulacion escriba en el mundo real.
- */
 public final class TreeSimulationWorld
         implements InvocationHandler {
 
@@ -38,17 +29,45 @@ public final class TreeSimulationWorld
 
     private final StructureWorldAccess proxy;
 
-    private int totalWrites;
+    private int totalWrites = 0;
+
+    // Lista deliberadamente pequeña.
+    // No contiene metodos duplicados.
+    private static final Set<String> READ_ONLY_METHODS =
+            Set.of(
+                "getBottomY",
+                "getHeight",
+                "getTopY",
+                "getSeaLevel",
+                "getBiome",
+                "getBiomeForNoiseGen",
+                "getDimension",
+                "getRegistryManager",
+                "getEnabledFeatures",
+                "getAmbientDarkness",
+                "getLightLevel",
+                "getBrightness",
+                "getSeed",
+                "isClient",
+                "isChunkLoaded",
+                "isPosLoaded",
+                "isRegionLoaded"
+            );
 
     public TreeSimulationWorld(
             StructureWorldAccess originalWorld) {
+
+        if (originalWorld == null) {
+            throw new IllegalArgumentException(
+                "Mundo original nulo"
+            );
+        }
 
         this.originalWorld = originalWorld;
 
         this.proxy = (StructureWorldAccess)
                 Proxy.newProxyInstance(
-                    StructureWorldAccess.class
-                        .getClassLoader(),
+                    StructureWorldAccess.class.getClassLoader(),
                     new Class<?>[] {
                         StructureWorldAccess.class
                     },
@@ -56,35 +75,22 @@ public final class TreeSimulationWorld
                 );
     }
 
-    /**
-     * Se entrega este mundo al generador.
-     * Nunca se debe entregar originalWorld
-     * durante una simulacion.
-     */
     public StructureWorldAccess getWorld() {
         return proxy;
     }
 
     public Map<BlockPos, BlockState> getStagedBlocks() {
-        return Collections.unmodifiableMap(
-            stagedBlocks
-        );
+        return Collections.unmodifiableMap(stagedBlocks);
     }
 
     public Map<BlockPos, BlockState> getOriginalBlocks() {
-        return Collections.unmodifiableMap(
-            originalBlocks
-        );
+        return Collections.unmodifiableMap(originalBlocks);
     }
 
     public int getTotalWrites() {
         return totalWrites;
     }
 
-    /**
-     * Obtiene el estado provisional si existe.
-     * Si no existe, consulta el mundo original.
-     */
     public BlockState getBlockState(BlockPos pos) {
 
         BlockState staged = stagedBlocks.get(pos);
@@ -96,14 +102,9 @@ public final class TreeSimulationWorld
         return originalWorld.getBlockState(pos);
     }
 
-    /**
-     * Registra una colocacion SIN aplicarla.
-     */
-    public boolean stage(
-            BlockPos pos,
-            BlockState state) {
+    public boolean stage(BlockPos pos, BlockState proposed) {
 
-        if (pos == null || state == null) {
+        if (pos == null || proposed == null) {
             throw new IllegalArgumentException(
                 "Posicion o estado nulo"
             );
@@ -120,188 +121,92 @@ public final class TreeSimulationWorld
             originalWorld.getBlockState(key)
         );
 
-        stagedBlocks.put(key, state);
+        stagedBlocks.put(key, proposed);
+
         totalWrites++;
 
         return true;
     }
 
-    /**
-     * Solo delegamos consultas explicitas.
-     * No delegamos automaticamente otros metodos
-     * porque podrian provocar cambios reales.
-     */
-    private static final Set<String> READ_ONLY_METHODS =
-            Set.of(
-                "getBottomY",
-                "getHeight",
-                "getTopY",
-                "getTopInclusive",
-                "getBottomY",
-                "getSeaLevel",
-                "getLightLevel",
-                "getBrightness",
-                "getAmbientDarkness",
-                "getBiome",
-                "getBiomeForNoiseGen",
-                "getDimension",
-                "getDimensionEntry",
-                "getRegistryManager",
-                "getEnabledFeatures",
-                "getGeneratorStoredBiome",
-                "getColor",
-                "getWorldBorder",
-                "getRandom",
-                "isClient",
-                "isChunkLoaded",
-                "isPosLoaded",
-                "isRegionLoaded",
-                "isSkyVisibleAllowingSea"
-            );
-
     @Override
     public Object invoke(
             Object proxyObject,
             Method method,
-            Object[] arguments) throws Throwable {
+            Object[] args) throws Throwable {
 
         String name = method.getName();
 
-        if (method.getDeclaringClass()
-                == Object.class) {
+        if (method.getDeclaringClass() == Object.class) {
 
             return switch (name) {
-                case "toString" ->
-                    "TreeSimulationWorld";
+                case "toString" -> "TreeSimulationWorld";
                 case "hashCode" ->
-                    System.identityHashCode(proxyObject);
+                        System.identityHashCode(proxyObject);
                 case "equals" ->
-                    proxyObject == arguments[0];
+                        proxyObject == args[0];
                 default ->
-                    throw new UnsupportedOperationException(
-                        name
-                    );
+                        throw new UnsupportedOperationException(name);
             };
         }
 
-        if ("getBlockState".equals(name)
-                && arguments != null
-                && arguments.length == 1
-                && arguments[0] instanceof BlockPos pos) {
+        if (args != null
+                && args.length >= 1
+                && args[0] instanceof BlockPos pos) {
 
-            return getBlockState(pos);
-        }
-
-        if ("isAir".equals(name)
-                && arguments != null
-                && arguments.length == 1
-                && arguments[0] instanceof BlockPos pos) {
-
-            return getBlockState(pos).isAir();
-        }
-
-        if ("getFluidState".equals(name)
-                && arguments != null
-                && arguments.length == 1
-                && arguments[0] instanceof BlockPos pos) {
-
-            return getBlockState(pos).getFluidState();
-        }
-
-        if ("testBlockState".equals(name)
-                && arguments != null
-                && arguments.length == 2
-                && arguments[0] instanceof BlockPos pos) {
-
-            @SuppressWarnings("unchecked")
-            Predicate<BlockState> predicate =
-                    (Predicate<BlockState>) arguments[1];
-
-            return predicate.test(getBlockState(pos));
-        }
-
-        if ("testFluidState".equals(name)
-                && arguments != null
-                && arguments.length == 2
-                && arguments[0] instanceof BlockPos pos) {
-
-            @SuppressWarnings("unchecked")
-            Predicate<net.minecraft.fluid.FluidState>
-                    predicate =
-                    (Predicate<net.minecraft.fluid.FluidState>)
-                            arguments[1];
-
-            return predicate.test(
-                getBlockState(pos).getFluidState()
-            );
-        }
-
-        if ("setBlockState".equals(name)
-                && arguments != null
-                && arguments.length >= 2
-                && arguments[0] instanceof BlockPos pos
-                && arguments[1] instanceof BlockState state) {
-
-            return stage(pos, state);
-        }
-
-        /*
-         * Un bloque modificado en la simulacion
-         * no debe devolver una entidad de bloque
-         * procedente del mundo original.
-         */
-        if ("getBlockEntity".equals(name)
-                && arguments != null
-                && arguments.length >= 1
-                && arguments[0] instanceof BlockPos pos) {
-
-            if (stagedBlocks.containsKey(pos)) {
-                return null;
+            if (name.equals("getBlockState")) {
+                return getBlockState(pos);
             }
 
-            throw new UnsupportedOperationException(
-                "Lectura de BlockEntity no simulada"
-            );
-        }
+            if (name.equals("getFluidState")) {
+                return getBlockState(pos).getFluidState();
+            }
 
-        /*
-         * Los siguientes metodos tienen
-         * efectos secundarios y NO se permiten.
-         */
-        if ("removeBlock".equals(name)
-                || "breakBlock".equals(name)
-                || "setBlockEntity".equals(name)
-                || "removeBlockEntity".equals(name)
-                || "scheduleBlockTick".equals(name)
-                || "scheduleFluidTick".equals(name)
-                || "spawnEntity".equals(name)
-                || "syncWorldEvent".equals(name)
-                || "emitGameEvent".equals(name)) {
+            if (name.equals("isAir")) {
+                return getBlockState(pos).isAir();
+            }
 
-            throw new UnsupportedOperationException(
-                "Operacion no aislada: " + name
-            );
+            if (name.equals("testBlockState")
+                    && args.length == 2) {
+
+                @SuppressWarnings("unchecked")
+                Predicate<BlockState> predicate =
+                        (Predicate<BlockState>) args[1];
+
+                return predicate.test(getBlockState(pos));
+            }
+
+            if (name.equals("testFluidState")
+                    && args.length == 2) {
+
+                @SuppressWarnings("unchecked")
+                Predicate<FluidState> predicate =
+                        (Predicate<FluidState>) args[1];
+
+                return predicate.test(
+                    getBlockState(pos).getFluidState()
+                );
+            }
+
+            if (name.equals("setBlockState")
+                    && args.length >= 2
+                    && args[1] instanceof BlockState state) {
+
+                return stage(pos, state);
+            }
         }
 
         if (READ_ONLY_METHODS.contains(name)) {
             try {
-                return method.invoke(
-                    originalWorld,
-                    arguments
-                );
-            } catch (InvocationTargetException e) {
-                throw e.getCause();
+                return method.invoke(originalWorld, args);
+            } catch (InvocationTargetException exception) {
+                throw exception.getCause();
             }
         }
 
-        /*
-         * Politica de seguridad:
-         * cualquier metodo que no hayamos
-         * implementado se rechaza.
-         */
+        // Cualquier operacion no implementada
+        // queda prohibida, nunca delegada.
         throw new UnsupportedOperationException(
-            "Metodo no implementado en simulacion: "
-                + name
+            "Metodo no permitido en simulacion: " + name
         );
     }
 }
