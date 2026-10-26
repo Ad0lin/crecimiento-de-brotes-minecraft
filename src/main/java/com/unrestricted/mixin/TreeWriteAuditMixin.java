@@ -1,97 +1,103 @@
 
 package com.unrestricted.mixin;
 
+import com.unrestricted.TreeGenerationBuffer;
+
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.ModifiableWorld;
 import net.minecraft.world.WorldAccess;
 import net.minecraft.world.gen.feature.TreeFeature;
+import net.minecraft.world.gen.feature.TreeFeatureConfig;
+import net.minecraft.world.gen.feature.util.FeatureContext;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.concurrent.atomic.AtomicInteger;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(TreeFeature.class)
 public abstract class TreeWriteAuditMixin {
 
-    private static final AtomicInteger LOG_COUNT =
-            new AtomicInteger();
+    private static final ThreadLocal<TreeGenerationBuffer>
+            CURRENT = new ThreadLocal<>();
 
-    private static final int MAX_LOGS = 100;
+    @Inject(
+        method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
+        at = @At("HEAD")
+    )
+    private void unrestricted$begin(
+            FeatureContext<TreeFeatureConfig> context,
+            CallbackInfoReturnable<Boolean> cir) {
 
-    private static void unrestricted$audit(
-            String method,
-            ModifiableWorld world,
-            BlockPos pos,
-            BlockState proposed) {
+        CURRENT.set(new TreeGenerationBuffer());
+    }
 
-        if (!(world instanceof WorldAccess access)) {
-            return;
-        }
+    @Inject(
+        method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
+        at = @At("RETURN")
+    )
+    private void unrestricted$finish(
+            FeatureContext<TreeFeatureConfig> context,
+            CallbackInfoReturnable<Boolean> cir) {
 
-        if (LOG_COUNT.get() >= MAX_LOGS) {
-            return;
-        }
+        TreeGenerationBuffer buffer = CURRENT.get();
+        CURRENT.remove();
 
-        BlockState existing = access.getBlockState(pos);
-
-        // Solo registrar posiciones que ya tienen
-        // un bloque, para identificar sobrescrituras.
-        if (existing.isAir()) {
-            return;
-        }
-
-        if (LOG_COUNT.getAndIncrement() >= MAX_LOGS) {
+        if (buffer == null) {
             return;
         }
 
         System.out.println(
-            "[Unrestricted Trees AUDIT]"
-            + " | Metodo: " + method
-            + " | Posicion: " + pos.toShortString()
-            + " | Existente: "
-            + existing.getBlock().getTranslationKey()
-            + " | Propuesto: "
-            + proposed.getBlock().getTranslationKey()
+            "[Unrestricted Trees BUFFER]"
+            + " | Vanilla success: " + cir.getReturnValue()
+            + " | Escrituras: " + buffer.getTotalWrites()
+            + " | Posiciones: " + buffer.getUniquePositions()
+            + " | Conflictos preliminares: "
+            + buffer.getBlockedWrites()
+            + " | Primer conflicto: "
+            + buffer.getFirstBlockedPosition()
         );
+    }
+
+    private static void unrestricted$record(
+            ModifiableWorld world,
+            BlockPos pos,
+            BlockState state) {
+
+        TreeGenerationBuffer buffer = CURRENT.get();
+
+        if (buffer != null
+                && world instanceof WorldAccess access) {
+
+            buffer.record(access, pos, state);
+        }
     }
 
     @Inject(
         method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
         at = @At("HEAD")
     )
-    private void unrestricted$auditNormalWrite(
+    private void unrestricted$recordNormal(
             ModifiableWorld world,
             BlockPos pos,
             BlockState state,
             CallbackInfo ci) {
 
-        unrestricted$audit(
-            "setBlockState",
-            world,
-            pos,
-            state
-        );
+        unrestricted$record(world, pos, state);
     }
 
     @Inject(
         method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
         at = @At("HEAD")
     )
-    private static void unrestricted$auditSilentWrite(
+    private static void unrestricted$recordSilent(
             ModifiableWorld world,
             BlockPos pos,
             BlockState state,
             CallbackInfo ci) {
 
-        unrestricted$audit(
-            "setBlockStateWithoutUpdatingNeighbors",
-            world,
-            pos,
-            state
-        );
+        unrestricted$record(world, pos, state);
     }
 }
