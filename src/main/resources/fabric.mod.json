@@ -27,6 +27,7 @@
     "issues": "https://github.com/Ad0lin/crecimiento-de-brotes-minecraft/issues"
   },
   "environment": "*",
+  "icon": "assets/unrestricted_trees/icon.png",
   "entrypoints": {},
   "mixins": [
     "unrestricted_trees.mixins.json"
