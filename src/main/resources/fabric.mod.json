@@ -4,7 +4,7 @@
   "id": "unrestricted_trees",
   "version": "1.53.0",
   "name": "Unrestricted Trees",
-  "description ES": "Permite crecer arboles y hongos de todo tipo sin restricciones de espacio alrededor de los bloques, Permitiendo granjas automaticas con dispenser (si se tiene algun mod que permita que el dispenser ponga retoños)",
+  "description": "Permite crecer arboles y hongos de todo tipo sin restricciones de espacio alrededor de los bloques, Permitiendo granjas automaticas con dispenser (si se tiene algun mod que permita que el dispenser ponga retoños)",
   "authors": [
     {
       "name": "Ad0lin",
