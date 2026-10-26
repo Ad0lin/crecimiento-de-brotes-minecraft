@@ -5,10 +5,10 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "TreeFeatureMixin",
-    "TreeWriteAuditMixin"
+    "TreeWriteAuditMixin",
+    "TreeSimulationProbeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
   }
 }
-    
