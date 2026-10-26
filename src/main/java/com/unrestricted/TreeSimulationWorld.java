@@ -1,21 +1,33 @@
 
 package com.unrestricted;
 
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.MappingResolver;
+
 import net.minecraft.block.BlockState;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.StructureWorldAccess;
 
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Predicate;
 
+/**
+ * Mundo temporal experimental.
+ *
+ * Intercepta escrituras y lecturas de bloques
+ * sin modificar el mundo real.
+ *
+ * Los metodos se identifican mediante los
+ * mappings de Fabric Loader.
+ *
+ * Cualquier operacion desconocida se rechaza.
+ */
 public final class TreeSimulationWorld
         implements InvocationHandler {
 
@@ -29,45 +41,75 @@ public final class TreeSimulationWorld
 
     private final StructureWorldAccess proxy;
 
-    private int totalWrites = 0;
+    private final String setBlockStateName;
+    private final String setBlockStateDeepName;
+    private final String getBlockStateName;
+    private final String getFluidStateName;
 
-    // Lista deliberadamente pequeña.
-    // No contiene metodos duplicados.
-    private static final Set<String> READ_ONLY_METHODS =
-            Set.of(
-                "getBottomY",
-                "getHeight",
-                "getTopY",
-                "getSeaLevel",
-                "getBiome",
-                "getBiomeForNoiseGen",
-                "getDimension",
-                "getRegistryManager",
-                "getEnabledFeatures",
-                "getAmbientDarkness",
-                "getLightLevel",
-                "getBrightness",
-                "getSeed",
-                "isClient",
-                "isChunkLoaded",
-                "isPosLoaded",
-                "isRegionLoaded"
-            );
+    private int totalWrites = 0;
 
     public TreeSimulationWorld(
             StructureWorldAccess originalWorld) {
 
         if (originalWorld == null) {
             throw new IllegalArgumentException(
-                "Mundo original nulo"
+                "El mundo original no puede ser nulo"
             );
         }
 
         this.originalWorld = originalWorld;
 
-        this.proxy = (StructureWorldAccess)
+        MappingResolver mappings =
+                FabricLoader.getInstance()
+                        .getMappingResolver();
+
+        /*
+         * Convertimos los nombres intermediarios
+         * a los utilizados realmente por Minecraft.
+         *
+         * Las firmas corresponden a MC 1.21.11.
+         */
+
+        setBlockStateName =
+                mappings.mapMethodName(
+                    "intermediary",
+                    "net.minecraft.class_1945",
+                    "method_8652",
+                    "(Lnet/minecraft/class_2338;"
+                    + "Lnet/minecraft/class_2680;I)Z"
+                );
+
+        setBlockStateDeepName =
+                mappings.mapMethodName(
+                    "intermediary",
+                    "net.minecraft.class_1945",
+                    "method_30092",
+                    "(Lnet/minecraft/class_2338;"
+                    + "Lnet/minecraft/class_2680;II)Z"
+                );
+
+        getBlockStateName =
+                mappings.mapMethodName(
+                    "intermediary",
+                    "net.minecraft.class_1922",
+                    "method_8320",
+                    "(Lnet/minecraft/class_2338;)"
+                    + "Lnet/minecraft/class_2680;"
+                );
+
+        getFluidStateName =
+                mappings.mapMethodName(
+                    "intermediary",
+                    "net.minecraft.class_1922",
+                    "method_8316",
+                    "(Lnet/minecraft/class_2338;)"
+                    + "Lnet/minecraft/class_3610;"
+                );
+
+        proxy = (StructureWorldAccess)
                 Proxy.newProxyInstance(
-                    StructureWorldAccess.class.getClassLoader(),
+                    StructureWorldAccess.class
+                            .getClassLoader(),
                     new Class<?>[] {
                         StructureWorldAccess.class
                     },
@@ -80,17 +122,26 @@ public final class TreeSimulationWorld
     }
 
     public Map<BlockPos, BlockState> getStagedBlocks() {
-        return Collections.unmodifiableMap(stagedBlocks);
+        return Collections.unmodifiableMap(
+            stagedBlocks
+        );
     }
 
     public Map<BlockPos, BlockState> getOriginalBlocks() {
-        return Collections.unmodifiableMap(originalBlocks);
+        return Collections.unmodifiableMap(
+            originalBlocks
+        );
     }
 
     public int getTotalWrites() {
         return totalWrites;
     }
 
+    /**
+     * Lee primero el bloque provisional.
+     *
+     * Si no existe, consulta el mundo original.
+     */
     public BlockState getBlockState(BlockPos pos) {
 
         BlockState staged = stagedBlocks.get(pos);
@@ -102,7 +153,14 @@ public final class TreeSimulationWorld
         return originalWorld.getBlockState(pos);
     }
 
-    public boolean stage(BlockPos pos, BlockState proposed) {
+    /**
+     * Guarda un bloque virtualmente.
+     *
+     * No llama a setBlockState del mundo real.
+     */
+    public boolean stage(
+            BlockPos pos,
+            BlockState proposed) {
 
         if (pos == null || proposed == null) {
             throw new IllegalArgumentException(
@@ -128,6 +186,24 @@ public final class TreeSimulationWorld
         return true;
     }
 
+    /**
+     * Identifica un metodo por nombre resuelto,
+     * cantidad y tipos de parametros.
+     */
+    private boolean matchesBlockWrite(
+            Method method,
+            Object[] args,
+            String expectedName,
+            int expectedArgumentCount) {
+
+        return method.getName().equals(expectedName)
+                && args != null
+                && args.length == expectedArgumentCount
+                && args[0] instanceof BlockPos
+                && args[1] instanceof BlockState
+                && method.getReturnType() == boolean.class;
+    }
+
     @Override
     public Object invoke(
             Object proxyObject,
@@ -136,77 +212,103 @@ public final class TreeSimulationWorld
 
         String name = method.getName();
 
-        if (method.getDeclaringClass() == Object.class) {
+        // Metodos basicos de Object.
+        if (method.getDeclaringClass()
+                == Object.class) {
 
             return switch (name) {
-                case "toString" -> "TreeSimulationWorld";
+
+                case "toString" ->
+                        "TreeSimulationWorld";
+
                 case "hashCode" ->
-                        System.identityHashCode(proxyObject);
+                        System.identityHashCode(
+                            proxyObject
+                        );
+
                 case "equals" ->
-                        proxyObject == args[0];
+                        proxyObject == (
+                            args == null ? null : args[0]
+                        );
+
                 default ->
-                        throw new UnsupportedOperationException(name);
+                        throw new UnsupportedOperationException(
+                            "Object: " + name
+                        );
             };
         }
 
-        if (args != null
-                && args.length >= 1
-                && args[0] instanceof BlockPos pos) {
+        /*
+         * Escritura de tres parametros.
+         *
+         * setBlockState(pos, state, flags)
+         */
+        if (matchesBlockWrite(
+                method,
+                args,
+                setBlockStateName,
+                3)) {
 
-            if (name.equals("getBlockState")) {
-                return getBlockState(pos);
-            }
-
-            if (name.equals("getFluidState")) {
-                return getBlockState(pos).getFluidState();
-            }
-
-            if (name.equals("isAir")) {
-                return getBlockState(pos).isAir();
-            }
-
-            if (name.equals("testBlockState")
-                    && args.length == 2) {
-
-                @SuppressWarnings("unchecked")
-                Predicate<BlockState> predicate =
-                        (Predicate<BlockState>) args[1];
-
-                return predicate.test(getBlockState(pos));
-            }
-
-            if (name.equals("testFluidState")
-                    && args.length == 2) {
-
-                @SuppressWarnings("unchecked")
-                Predicate<FluidState> predicate =
-                        (Predicate<FluidState>) args[1];
-
-                return predicate.test(
-                    getBlockState(pos).getFluidState()
-                );
-            }
-
-            if (name.equals("setBlockState")
-                    && args.length >= 2
-                    && args[1] instanceof BlockState state) {
-
-                return stage(pos, state);
-            }
+            return stage(
+                (BlockPos) args[0],
+                (BlockState) args[1]
+            );
         }
 
-        if (READ_ONLY_METHODS.contains(name)) {
-            try {
-                return method.invoke(originalWorld, args);
-            } catch (InvocationTargetException exception) {
-                throw exception.getCause();
-            }
+        /*
+         * Escritura de cuatro parametros.
+         *
+         * setBlockState(pos, state, flags, depth)
+         */
+        if (matchesBlockWrite(
+                method,
+                args,
+                setBlockStateDeepName,
+                4)) {
+
+            return stage(
+                (BlockPos) args[0],
+                (BlockState) args[1]
+            );
         }
 
-        // Cualquier operacion no implementada
-        // queda prohibida, nunca delegada.
+        /*
+         * Lectura de bloques.
+         */
+        if (name.equals(getBlockStateName)
+                && args != null
+                && args.length == 1
+                && args[0] instanceof BlockPos pos
+                && method.getReturnType()
+                        == BlockState.class) {
+
+            return getBlockState(pos);
+        }
+
+        /*
+         * Lectura de fluidos.
+         *
+         * Respeta los bloques provisionales.
+         */
+        if (name.equals(getFluidStateName)
+                && args != null
+                && args.length == 1
+                && args[0] instanceof BlockPos pos
+                && method.getReturnType()
+                        == FluidState.class) {
+
+            return getBlockState(pos).getFluidState();
+        }
+
+        /*
+         * Politica de seguridad:
+         *
+         * Nunca delegamos operaciones desconocidas
+         * al mundo real.
+         */
         throw new UnsupportedOperationException(
-            "Metodo no permitido en simulacion: " + name
+            "Metodo no permitido en simulacion: "
+                    + name
         );
     }
 }
