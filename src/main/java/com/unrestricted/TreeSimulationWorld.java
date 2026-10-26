@@ -1,9 +1,6 @@
 
 package com.unrestricted;
 
-import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.MappingResolver;
-
 import net.minecraft.block.BlockState;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.util.math.BlockPos;
@@ -12,22 +9,10 @@ import net.minecraft.world.StructureWorldAccess;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Mundo temporal experimental.
- *
- * Intercepta escrituras y lecturas de bloques
- * sin modificar el mundo real.
- *
- * Los metodos se identifican mediante los
- * mappings de Fabric Loader.
- *
- * Cualquier operacion desconocida se rechaza.
- */
 public final class TreeSimulationWorld
         implements InvocationHandler {
 
@@ -41,11 +26,6 @@ public final class TreeSimulationWorld
 
     private final StructureWorldAccess proxy;
 
-    private final String setBlockStateName;
-    private final String setBlockStateDeepName;
-    private final String getBlockStateName;
-    private final String getFluidStateName;
-
     private int totalWrites = 0;
 
     public TreeSimulationWorld(
@@ -53,63 +33,15 @@ public final class TreeSimulationWorld
 
         if (originalWorld == null) {
             throw new IllegalArgumentException(
-                "El mundo original no puede ser nulo"
+                "Mundo original nulo"
             );
         }
 
         this.originalWorld = originalWorld;
 
-        MappingResolver mappings =
-                FabricLoader.getInstance()
-                        .getMappingResolver();
-
-        /*
-         * Convertimos los nombres intermediarios
-         * a los utilizados realmente por Minecraft.
-         *
-         * Las firmas corresponden a MC 1.21.11.
-         */
-
-        setBlockStateName =
-                mappings.mapMethodName(
-                    "intermediary",
-                    "net.minecraft.class_1945",
-                    "method_8652",
-                    "(Lnet/minecraft/class_2338;"
-                    + "Lnet/minecraft/class_2680;I)Z"
-                );
-
-        setBlockStateDeepName =
-                mappings.mapMethodName(
-                    "intermediary",
-                    "net.minecraft.class_1945",
-                    "method_30092",
-                    "(Lnet/minecraft/class_2338;"
-                    + "Lnet/minecraft/class_2680;II)Z"
-                );
-
-        getBlockStateName =
-                mappings.mapMethodName(
-                    "intermediary",
-                    "net.minecraft.class_1922",
-                    "method_8320",
-                    "(Lnet/minecraft/class_2338;)"
-                    + "Lnet/minecraft/class_2680;"
-                );
-
-        getFluidStateName =
-                mappings.mapMethodName(
-                    "intermediary",
-                    "net.minecraft.class_1922",
-                    "method_8316",
-                    "(Lnet/minecraft/class_2338;)"
-                    + "Lnet/minecraft/class_3610;"
-                );
-
-        proxy = (StructureWorldAccess)
+        this.proxy = (StructureWorldAccess)
                 Proxy.newProxyInstance(
-                    StructureWorldAccess.class
-                            .getClassLoader(),
+                    StructureWorldAccess.class.getClassLoader(),
                     new Class<?>[] {
                         StructureWorldAccess.class
                     },
@@ -122,28 +54,18 @@ public final class TreeSimulationWorld
     }
 
     public Map<BlockPos, BlockState> getStagedBlocks() {
-        return Collections.unmodifiableMap(
-            stagedBlocks
-        );
+        return Collections.unmodifiableMap(stagedBlocks);
     }
 
     public Map<BlockPos, BlockState> getOriginalBlocks() {
-        return Collections.unmodifiableMap(
-            originalBlocks
-        );
+        return Collections.unmodifiableMap(originalBlocks);
     }
 
     public int getTotalWrites() {
         return totalWrites;
     }
 
-    /**
-     * Lee primero el bloque provisional.
-     *
-     * Si no existe, consulta el mundo original.
-     */
     public BlockState getBlockState(BlockPos pos) {
-
         BlockState staged = stagedBlocks.get(pos);
 
         if (staged != null) {
@@ -153,16 +75,11 @@ public final class TreeSimulationWorld
         return originalWorld.getBlockState(pos);
     }
 
-    /**
-     * Guarda un bloque virtualmente.
-     *
-     * No llama a setBlockState del mundo real.
-     */
     public boolean stage(
             BlockPos pos,
-            BlockState proposed) {
+            BlockState state) {
 
-        if (pos == null || proposed == null) {
+        if (pos == null || state == null) {
             throw new IllegalArgumentException(
                 "Posicion o estado nulo"
             );
@@ -179,29 +96,40 @@ public final class TreeSimulationWorld
             originalWorld.getBlockState(key)
         );
 
-        stagedBlocks.put(key, proposed);
-
+        stagedBlocks.put(key, state);
         totalWrites++;
 
         return true;
     }
 
-    /**
-     * Identifica un metodo por nombre resuelto,
-     * cantidad y tipos de parametros.
-     */
-    private boolean matchesBlockWrite(
+    private static boolean isNamed(
             Method method,
-            Object[] args,
-            String expectedName,
-            int expectedArgumentCount) {
+            String named,
+            String intermediary) {
 
-        return method.getName().equals(expectedName)
-                && args != null
-                && args.length == expectedArgumentCount
-                && args[0] instanceof BlockPos
-                && args[1] instanceof BlockState
-                && method.getReturnType() == boolean.class;
+        String actual = method.getName();
+
+        return actual.equals(named)
+                || actual.equals(intermediary);
+    }
+
+    private static boolean hasParameters(
+            Method method,
+            Class<?>... expected) {
+
+        Class<?>[] actual = method.getParameterTypes();
+
+        if (actual.length != expected.length) {
+            return false;
+        }
+
+        for (int i = 0; i < actual.length; i++) {
+            if (actual[i] != expected[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     @Override
@@ -212,42 +140,34 @@ public final class TreeSimulationWorld
 
         String name = method.getName();
 
-        // Metodos basicos de Object.
-        if (method.getDeclaringClass()
-                == Object.class) {
-
+        if (method.getDeclaringClass() == Object.class) {
             return switch (name) {
-
-                case "toString" ->
-                        "TreeSimulationWorld";
-
+                case "toString" -> "TreeSimulationWorld";
                 case "hashCode" ->
-                        System.identityHashCode(
-                            proxyObject
-                        );
-
+                    System.identityHashCode(proxyObject);
                 case "equals" ->
-                        proxyObject == (
-                            args == null ? null : args[0]
-                        );
-
+                    proxyObject == (
+                        args == null ? null : args[0]
+                    );
                 default ->
-                        throw new UnsupportedOperationException(
-                            "Object: " + name
-                        );
+                    throw new UnsupportedOperationException(name);
             };
         }
 
-        /*
-         * Escritura de tres parametros.
-         *
-         * setBlockState(pos, state, flags)
-         */
-        if (matchesBlockWrite(
+        // Escritura virtual:
+        // setBlockState(pos, state, flags)
+        if (isNamed(
                 method,
-                args,
-                setBlockStateName,
-                3)) {
+                "setBlockState",
+                "method_8652"
+            )
+            && hasParameters(
+                method,
+                BlockPos.class,
+                BlockState.class,
+                int.class
+            )
+            && method.getReturnType() == boolean.class) {
 
             return stage(
                 (BlockPos) args[0],
@@ -255,60 +175,39 @@ public final class TreeSimulationWorld
             );
         }
 
-        /*
-         * Escritura de cuatro parametros.
-         *
-         * setBlockState(pos, state, flags, depth)
-         */
-        if (matchesBlockWrite(
+        // Lectura del bloque provisional.
+        if (isNamed(
                 method,
-                args,
-                setBlockStateDeepName,
-                4)) {
+                "getBlockState",
+                "method_8320"
+            )
+            && hasParameters(method, BlockPos.class)
+            && method.getReturnType() == BlockState.class) {
 
-            return stage(
-                (BlockPos) args[0],
-                (BlockState) args[1]
-            );
+            return getBlockState((BlockPos) args[0]);
         }
 
-        /*
-         * Lectura de bloques.
-         */
-        if (name.equals(getBlockStateName)
-                && args != null
-                && args.length == 1
-                && args[0] instanceof BlockPos pos
-                && method.getReturnType()
-                        == BlockState.class) {
+        // Lectura de fluidos, respetando los
+        // estados provisionales de los bloques.
+        if (isNamed(
+                method,
+                "getFluidState",
+                "method_8316"
+            )
+            && hasParameters(method, BlockPos.class)
+            && method.getReturnType() == FluidState.class) {
 
-            return getBlockState(pos);
+            return getBlockState(
+                (BlockPos) args[0]
+            ).getFluidState();
         }
 
-        /*
-         * Lectura de fluidos.
-         *
-         * Respeta los bloques provisionales.
-         */
-        if (name.equals(getFluidStateName)
-                && args != null
-                && args.length == 1
-                && args[0] instanceof BlockPos pos
-                && method.getReturnType()
-                        == FluidState.class) {
-
-            return getBlockState(pos).getFluidState();
-        }
-
-        /*
-         * Politica de seguridad:
-         *
-         * Nunca delegamos operaciones desconocidas
-         * al mundo real.
-         */
+        // Seguridad: no delegar otros metodos.
         throw new UnsupportedOperationException(
             "Metodo no permitido en simulacion: "
-                    + name
+            + name
+            + " | Firma: "
+            + method.toGenericString()
         );
     }
 }
