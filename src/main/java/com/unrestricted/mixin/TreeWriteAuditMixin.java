@@ -1,4 +1,3 @@
-
 package com.unrestricted.mixin;
 
 import com.unrestricted.TreeGenerationBuffer;
@@ -20,42 +19,46 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Auditoria de intentos de escritura de TreeFeature.
  *
- * La prioridad 1100 permite registrar los intentos
- * antes de que otros Mixins de prioridad 1000
- * puedan cancelarlos.
+ * Conservamos el mecanismo porque TreeFeatureMixin
+ * depende del snapshot activo para proteger bloques
+ * originales.
  *
- * IMPORTANTE: los registros NO garantizan
- * que la escritura se haya aplicado al mundo.
+ * Los logs quedan desactivados por defecto.
  */
 @Mixin(value = TreeFeature.class, priority = 1100)
 public abstract class TreeWriteAuditMixin {
 
+    private static final ThreadLocal<TreeGenerationBuffer>
+            CURRENT = new ThreadLocal<>();
+
     @Inject(
-        method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
-        at = @At("HEAD")
+            method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
+            at = @At("HEAD")
     )
     private void unrestricted$begin(
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        TreeGenerationBuffer.activate(
-            new TreeGenerationBuffer(
+        TreeGenerationBuffer buffer = new TreeGenerationBuffer(
                 context.getWorld(),
                 context.getOrigin()
-            )
         );
+
+        CURRENT.set(buffer);
+        TreeGenerationBuffer.activate(buffer);
     }
 
     @Inject(
-        method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
-        at = @At("RETURN")
+            method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
+            at = @At("RETURN")
     )
     private void unrestricted$finish(
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        TreeGenerationBuffer buffer = TreeGenerationBuffer.active();
+        TreeGenerationBuffer buffer = CURRENT.get();
 
+        CURRENT.remove();
         TreeGenerationBuffer.clearActive();
 
         if (buffer != null) {
@@ -68,7 +71,7 @@ public abstract class TreeWriteAuditMixin {
             BlockPos pos,
             BlockState state) {
 
-        TreeGenerationBuffer buffer = TreeGenerationBuffer.active();
+        TreeGenerationBuffer buffer = CURRENT.get();
 
         if (buffer == null) {
             return;
@@ -80,8 +83,8 @@ public abstract class TreeWriteAuditMixin {
     }
 
     @Inject(
-        method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
-        at = @At("HEAD")
+            method = "setBlockState(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
+            at = @At("HEAD")
     )
     private void unrestricted$recordNormal(
             ModifiableWorld world,
@@ -93,8 +96,8 @@ public abstract class TreeWriteAuditMixin {
     }
 
     @Inject(
-        method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
-        at = @At("HEAD")
+            method = "setBlockStateWithoutUpdatingNeighbors(Lnet/minecraft/world/ModifiableWorld;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;)V",
+            at = @At("HEAD")
     )
     private static void unrestricted$recordSilent(
             ModifiableWorld world,
