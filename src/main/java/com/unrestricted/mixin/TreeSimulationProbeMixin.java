@@ -3,7 +3,9 @@ package com.unrestricted.mixin;
 
 import com.unrestricted.TreeSimulationWorld;
 
-import net.minecraft.util.math.random.Random;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.gen.feature.TreeFeature;
 import net.minecraft.world.gen.feature.TreeFeatureConfig;
 import net.minecraft.world.gen.feature.util.FeatureContext;
@@ -13,82 +15,92 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 @Mixin(TreeFeature.class)
 public abstract class TreeSimulationProbeMixin {
 
-    // Evita que la simulacion vuelva a iniciar
-    // otra simulacion de forma recursiva.
-    private static final ThreadLocal<Boolean> RUNNING =
-            ThreadLocal.withInitial(() -> false);
+    // Una sola prueba por inicio del juego.
+    private static final AtomicBoolean TESTED =
+            new AtomicBoolean(false);
 
     @Inject(
         method = "generate(Lnet/minecraft/world/gen/feature/util/FeatureContext;)Z",
         at = @At("HEAD")
     )
-    private void unrestricted$probe(
+    private void unrestricted$smokeTest(
             FeatureContext<TreeFeatureConfig> context,
             CallbackInfoReturnable<Boolean> cir) {
 
-        if (RUNNING.get()) {
+        if (!TESTED.compareAndSet(false, true)) {
             return;
         }
 
-        RUNNING.set(true);
-
         try {
+            BlockPos testPos =
+                    context.getOrigin().up(2);
+
+            BlockState originalBefore =
+                    context.getWorld()
+                        .getBlockState(testPos);
+
             TreeSimulationWorld simulation =
                     new TreeSimulationWorld(
                         context.getWorld()
                     );
 
-            // Usar un generador independiente:
-            // no consumir el Random de Vanilla.
-            Random probeRandom =
-                    Random.create(987654321L);
-
-            FeatureContext<TreeFeatureConfig> probeContext =
-                    new FeatureContext<>(
-                        context.getFeature(),
-                        simulation.getWorld(),
-                        context.getGenerator(),
-                        probeRandom,
-                        context.getOrigin(),
-                        context.getConfig()
+            boolean staged =
+                    simulation.getWorld().setBlockState(
+                        testPos,
+                        Blocks.OAK_LOG.getDefaultState(),
+                        3
                     );
 
-            System.out.println(
-                "[Unrestricted Trees SIMULATION START]"
-                + " | Origen: "
-                + context.getOrigin().toShortString()
-            );
+            BlockState virtualAfter =
+                    simulation.getWorld()
+                        .getBlockState(testPos);
 
-            boolean generated =
-                    ((TreeFeature) (Object) this)
-                        .generate(probeContext);
+            BlockState realAfter =
+                    context.getWorld()
+                        .getBlockState(testPos);
+
+            boolean virtualCorrect =
+                    virtualAfter.isOf(Blocks.OAK_LOG);
+
+            boolean realUnchanged =
+                    originalBefore.equals(realAfter);
+
+            boolean passed =
+                    staged
+                    && virtualCorrect
+                    && realUnchanged
+                    && simulation.getTotalWrites() == 1;
 
             System.out.println(
-                "[Unrestricted Trees SIMULATION RESULT]"
-                + " | Resultado: " + generated
+                "[Unrestricted Trees SMOKE TEST]"
+                + " | Resultado: "
+                + (passed ? "PASS" : "FAIL")
+                + " | Posicion: "
+                + testPos.toShortString()
                 + " | Escrituras virtuales: "
                 + simulation.getTotalWrites()
-                + " | Posiciones virtuales: "
-                + simulation.getStagedBlocks().size()
+                + " | Virtual correcto: "
+                + virtualCorrect
+                + " | Mundo real intacto: "
+                + realUnchanged
             );
 
-        } catch (RuntimeException exception) {
+        } catch (Throwable exception) {
 
-            // Fallo de la simulacion.
-            // No cancelar el crecimiento Vanilla.
+            // Esta prueba no debe provocar
+            // un crash ni cancelar el arbol Vanilla.
             System.out.println(
-                "[Unrestricted Trees SIMULATION REJECTED]"
+                "[Unrestricted Trees SMOKE TEST ERROR]"
                 + " | Tipo: "
-                + exception.getClass().getSimpleName()
+                + exception.getClass().getName()
                 + " | Motivo: "
                 + exception.getMessage()
             );
-
-        } finally {
-            RUNNING.remove();
         }
     }
 }
