@@ -4,7 +4,7 @@
   "id": "unrestricted_trees",
   "version": "1.53.0",
   "name": "Unrestricted Trees",
-  "description": "Permite crecer arboles y hongos de todo tipo sin restricciones de espacio alrededor de los bloques, Permitiendo granjas automaticas con dispenser (si se tiene algun mod que permita que el dispenser ponga retoños)",
+  "description": "Allows Minecraft trees to grow in confined spaces, even near redstone machinery and other solid blocks. Preserves existing structures by safely skipping obstructed tree placements. Supports giant trees, standard trees, branching trees and compatibility with Vanilla Tweaks Timber. Developed and tested for Minecraft Java 1.21.11.",
   "authors": [
     {
       "name": "Ad0lin",
@@ -15,9 +15,7 @@
   ],
   "contributors": [
     {
-    "Ideologo y tester: Gaston Parés"
-    "Desarrollador principal: ChatGPT (OpenAI) - AI-assisted code development, debugging and technical design",
-    "Desarrollador proyecto base: Gemini (Google)",
+      "name": "ChatGPT (OpenAI) - AI-assisted code development, debugging and technical design"
     }
   ],
   "contact": {
